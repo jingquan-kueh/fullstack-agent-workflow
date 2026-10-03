@@ -2,7 +2,22 @@
 
 TODO(setup): One sentence on what this is and who it is for.
 
-Full-stack TypeScript: Node.js API (`backend/`), Postgres, React + MUI web app (`frontend/`).
+## Commands and paths
+
+The workflow (`.claude/commands/`, `.github/agent-prompt.md`) refers to these by name. Change them
+here, never in the workflow files.
+
+| Name             | Value                                                  |
+| ---------------- | ------------------------------------------------------ |
+| Check command    | `npm run check` (typecheck, lint, format check, tests) |
+| Format command   | `npx prettier --write <files>`                         |
+| Start database   | `npm run db:up`                                        |
+| Apply migrations | `npm run db:migrate`                                   |
+| Start API        | `npm run dev -w backend` (port 3000)                   |
+| Start web app    | `npm run dev -w frontend -- --port 5173 --strictPort`  |
+| Web app URL      | `http://localhost:5173`                                |
+| API code         | `backend/`                                             |
+| Web app code     | `frontend/`                                            |
 
 ## Read first
 
@@ -11,7 +26,7 @@ Before starting any task, read the `context/` files in this order:
 - `context/project-overview.md`
 - `context/architecture.md`
 - `context/code-standards.md`
-- `context/ui-rules.md` (for any `frontend/` work)
+- `context/ui-rules.md` (for any web app work)
 - `context/library-docs.md` (before using any MCP server or looking up library / API docs)
 
 If a request conflicts with these files, point out the conflict before proceeding. When a change
@@ -41,13 +56,14 @@ fills these in. Keep the generic ones below unless you have a reason to drop the
 Work happens in one of two ways. Both end in a pull request to `main`. Never commit or push to
 `main` directly: `main` only receives code that passed CI (`.github/workflows/ci.yml`).
 
-"Done" always means `npm run check` passes (typecheck, lint, format check, tests).
+"Done" always means the check command (see "Commands and paths") passes.
 
-### 0. New project
+### 0. Setup
 
-`/setup-project` interviews the developer and fills in every `TODO(setup)` marker: this file, the
-`context/` docs, the first tickets in `context/progress-tracker.md` and the package names. Run it
-once, right after creating the repo from this template.
+`/setup-project` fills in every `TODO(setup)` marker: this file, the `context/` docs and the first
+tickets in `context/progress-tracker.md`. In a new project it interviews the developer and renames
+the packages. In an existing project that adopted this workflow, it reads the codebase first and
+rewrites the defaults (commands, paths, libraries, CI) to match. Run it once.
 
 ### 1. Local session (Claude Code in the IDE)
 
@@ -79,8 +95,8 @@ The command definitions live in `.claude/commands/`.
 1. Picks an issue: the nightly sweep takes the oldest open issue labelled `agent`, or an issue
    runs at once when labelled `agent:execute-now`.
 2. The agent reads the issue, then either asks questions (`agent:needs-info`) or implements it on
-   `agent/issue-<n>-<slug>` with tests and `npm run check`.
-3. If the diff touches `frontend/`, it screenshots the affected screens (desktop + mobile). The
+   `agent/issue-<n>-<slug>` with tests and the check command.
+3. If the diff touches the web app code, it screenshots the affected screens (desktop + mobile). The
    workflow publishes them to the orphan `screenshots` branch and links them on the PR.
 4. The agent opens a PR, then the workflow triggers CI on that branch.
 

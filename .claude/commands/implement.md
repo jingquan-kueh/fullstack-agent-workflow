@@ -27,11 +27,11 @@ Implement `$ARGUMENTS`. It is one of:
    a migration that has already been merged.
 5. Add tests for all business logic, named after behaviour (see `context/code-standards.md`).
 6. If the change alters architecture, scope or conventions, update the relevant `context/` file.
-7. Run `npm run check` and fix until it passes.
-8. For `frontend/` changes, run the app (`npm run db:up`, `npm run db:migrate`,
-   `npm run dev -w backend`, `npm run dev -w frontend`) and look at the affected screens.
+7. Run the check command (`CLAUDE.md` → "Commands and paths") and fix until it passes.
+8. For web app changes, run the app (start database, apply migrations, start API, start web app;
+   commands in `CLAUDE.md`) and look at the affected screens.
 9. Tick off what is done: completed items in the plan file, or the ticket's checkbox in the
    tracker. For a ticket, replace any **Open** item you settled with the decision.
 
-Finish with: what changed (per file), any deviations from the spec, and the `npm run check`
+Finish with: what changed (per file), any deviations from the spec, and the check command's
 result. Do not commit; that is `/finalize`.

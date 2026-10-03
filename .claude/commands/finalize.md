@@ -2,7 +2,8 @@
 description: Commit on a feature branch, push, and open a pull request
 ---
 
-1. Run `npm run check`. If it fails, stop and report; do not commit.
+1. Run the check command (`CLAUDE.md` → "Commands and paths"). If it fails, stop and report; do
+   not commit.
 2. If you are on `main`, create a branch first (`feat/<slug>` or `fix/<slug>`). Never commit to,
    push to or merge into `main`.
 3. Review `git status`. Stage specific files only, never `.env` or `screenshots/`. Read the staged

@@ -16,6 +16,10 @@
 # If the app needs other dev-only secrets to render screens, add them to the "Run Claude Code"
 # step's env, never production ones.
 #
+# Written for the template's default stack (Node via .nvmrc, npm, Postgres). In a project that
+# adopted the workflow, the service, env, install steps and the CI workflow it starts
+# (`gh workflow run ci.yml`) follow that project.
+#
 # One-time setup (see .github/agent-prompt.md for what the agent does):
 #   claude setup-token  ->  gh secret set CLAUDE_CODE_OAUTH_TOKEN
 #   for l in agent agent:execute-now agent:wip agent:pr-open agent:needs-info agent:failed; do

@@ -9,8 +9,10 @@ Environment:
 
 - `ISSUE`: the issue number you are working on.
 - `GH_TOKEN`: already set; `gh` and `git push` work without further auth.
-- You are on a checkout of `main`. Node 24, `npm ci` and Playwright Chromium are
-  already installed.
+- You are on a checkout of `main`. Node, the project's dependencies and
+  Playwright Chromium are already installed.
+- Commands and paths named below (check command, format command, start API, …)
+  are in `CLAUDE.md` → "Commands and paths".
 - `DATABASE_URL` points at a throwaway Postgres service container that exists
   only for this run. It is the only database you may connect to.
 
@@ -60,19 +62,17 @@ that prefix to detect that you opened a PR.
 
 - Do exactly what the issue asks. No drive-by refactors, no unrelated cleanup,
   no reformatting of files you didn't otherwise change.
-- Follow `context/code-standards.md`, and `context/ui-rules.md` for `frontend/`.
+- Follow `context/code-standards.md`, and `context/ui-rules.md` for web app code.
   Business logic gets tests named after behaviour.
 - Schema changes go in a new migration. Never edit a migration that is already
   on `main`.
 - If the change alters architecture, scope or conventions, update the relevant
   `context/` file in the same change.
-- Run Prettier on the files you changed, and only those:
-  `npx prettier --write <files>`
-- `npm run check` (typecheck, lint, format check, tests) **must pass** before
-  you commit. If you cannot make it pass, treat the run as blocked (see Hard
-  rules).
+- Run the format command on the files you changed, and only those.
+- The check command **must pass** before you commit. If you cannot make it
+  pass, treat the run as blocked (see Hard rules).
 
-## 4. Screenshots (only when the frontend changed)
+## 4. Screenshots (only when the web app changed)
 
 Decide from your diff, not from the issue:
 
@@ -80,9 +80,9 @@ Decide from your diff, not from the issue:
 git diff --name-only main
 ```
 
-- Any file under `frontend/` changed (other than tests) → take screenshots of each
-  screen the change affects.
-- Nothing under `frontend/` changed → skip this section entirely.
+- Any file under the web app code folder changed (other than tests) → take
+  screenshots of each screen the change affects.
+- Nothing under it changed → skip this section entirely.
 - The issue body overrides both: "no screenshots" means skip; "screenshots:
   Home, Settings" means capture exactly those screens.
 
@@ -90,14 +90,14 @@ Screens are listed in `context/ui-rules.md` → "Layout and navigation".
 TODO(setup): Name each screen and how to reach it (URL path, or tab label), e.g.
 "Home (`/`, the default)". Until then: "Home (`/`)".
 
-Run any pending migrations (command in `context/architecture.md`), start the API
-and the dev server, then capture each screen with the helper, which always
-writes both desktop (1280×900) and mobile (390×844):
+Apply migrations, then start the API and the web app in the background with
+their commands, logging to `/tmp/api.log` and `/tmp/web.log` (e.g.
+`<start API> > /tmp/api.log 2>&1 &`). Wait until the web app URL responds, then
+capture each screen with the helper, which always writes both desktop
+(1280×900) and mobile (390×844):
 
 ```
-npm run dev -w backend > /tmp/api.log 2>&1 &
-npm run dev -w frontend -- --port 5173 --strictPort > /tmp/vite.log 2>&1 &
-sleep 5
+export APP_URL=<web app URL>
 node .github/scripts/screenshot.mjs home
 node .github/scripts/screenshot.mjs settings /settings
 ```
@@ -150,7 +150,7 @@ changes and why it is safe.
 - Commands to run and screens to open, with what to expect.
 - If you took screenshots: list the screens captured and anything notable you
   saw in them. The workflow links the images in a PR comment.
-- `npm run check` result.
+- The check command's result.
 
 ## Notes
 - Assumptions made, follow-ups, anything the reviewer should look at closely.

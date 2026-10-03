@@ -39,7 +39,7 @@ pending migrations to `DATABASE_URL`. Tests apply them automatically before runn
 
 ```
 /
-├── CLAUDE.md                     → AI instructions + guardrails
+├── CLAUDE.md                     → AI instructions, guardrails, commands and paths
 ├── README.md
 ├── context/
 │   ├── project-overview.md       → What and why

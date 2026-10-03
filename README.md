@@ -1,27 +1,50 @@
-# Full-stack agent template
+# Full-stack Development Template and Workflow
 
-A starting point for full-stack TypeScript projects (Node.js + Postgres + React + MUI) that are
-built with Claude Code: locally through a plan → implement → review → finalize loop, and
-unattended through a GitHub issue agent that opens PRs.
+A template and workflow for building full-stack TypeScript projects with Claude Code.
 
-## What's in it
+Two ways for development:
 
-| Part                    | Files                                                                                                           |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| AI instructions         | `CLAUDE.md` (guardrails + workflow), `context/*.md` (read every session)                                        |
-| Local workflow commands | `.claude/commands/`: `/setup-project`, `/implement`, `/review`, `/finalize`, `/create-issue`                    |
-| Issue agent             | `.github/workflows/agent.yml`, `.github/agent-prompt.md`, `.github/scripts/screenshot.mjs`                      |
-| CI gate                 | `.github/workflows/ci.yml` (`npm run check` with a Postgres service)                                            |
-| Tooling                 | npm workspaces, TypeScript strict, ESLint, Prettier, Vitest                                                     |
-| Runnable skeleton       | `backend/` (API, `GET /api/health` → Postgres), `frontend/` (React + MUI page showing it), `docker-compose.yml` |
-| Docs lookup             | `.mcp.json` (MUI MCP server)                                                                                    |
+- locally through a **plan → implement → review → finalize** loop
+- unattended through a GitHub issue agent that opens PRs.
 
-Project-specific gaps are marked `TODO(setup)`. `/setup-project` fills them in by interviewing
-you. The backend defaults to Fastify (HTTP) and Drizzle (data access and migrations). The stack
-choices that differ between projects (auth, hosting) are left _open_ in `context/architecture.md`
-and decided during setup.
+Use it to start a new project from a runnable skeleton (Node.js + Postgres + React + MUI), or add the workflow to an existing TypeScript project and keep its stack.
 
-## Start a new project
+## Development Workflow Overview
+
+[I Will attach my own screenshot here later]
+
+## Commands
+
+Run these in Claude Code. Each stops when done so you can check the result before the next.
+
+| Command                          | What it does                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| `/setup-project <description>`   | Once per project: interviews you and fills in `CLAUDE.md` and `context/`              |
+| `/plan <goal>`                   | Plans a larger feature (read-only) and saves it to `plans/` once you approve          |
+| `/implement <plan, T01 or goal>` | Builds the plan, ticket or small goal with tests on a feature branch                  |
+| `/review`                        | Reviews the branch against the guardrails and standards, then fixes what you pick     |
+| `/finalize`                      | Commits, pushes and opens a pull request                                              |
+| `/create-issue <T01 or goal>`    | Drafts a GitHub issue the agent can finish without asking, and creates it on approval |
+
+## Default Tech Stack
+
+What a new project starts with. An existing project keeps its own stack.
+
+| Layer         | Default                                       |
+| ------------- | --------------------------------------------- |
+| Language      | TypeScript (strict), Node.js 24               |
+| API           | Fastify 5, zod validation                     |
+| Database      | Postgres 18 (local via Docker Compose)        |
+| Data access   | Drizzle ORM, drizzle-kit migrations           |
+| Web app       | React 19, MUI v9, Vite                        |
+| Testing       | Vitest (database tests against real Postgres) |
+| Lint / format | ESLint, Prettier                              |
+| Monorepo      | npm workspaces (`backend/`, `frontend/`)      |
+| CI / agent    | GitHub Actions, Claude Code                   |
+
+## Setup
+
+### Start a new project
 
 1. Copy the template (or mark this repo as a GitHub template and use "Use this template"):
 
@@ -45,29 +68,56 @@ and decided during setup.
 3. In Claude Code, run `/setup-project <a few sentences about the project>`. It asks about the
    product, guardrails, stack decisions, screens and first tickets, then fills in `CLAUDE.md`,
    `context/`, the agent prompt, package names and this README.
-4. Make the initial commit on `main` (the one commit that skips a PR, since there is nothing to PR
-   against yet), create the GitHub repo and push.
-5. Do the one-time GitHub setup below.
-6. Build: `/implement T01` locally, or `/create-issue T01` and label it `agent` for the issue agent.
+4. Build: `/implement T01` locally, or `/create-issue T01` and label it `agent` for the issue agent.
    The full loop is described in `CLAUDE.md` → "Development workflow".
 
-## One-time GitHub setup
+### Add to an existing project
+
+For a full-stack TypeScript repo that already has its own code, stack and history. Only the
+workflow layer is copied; the skeleton and tooling are not.
+
+1. On a branch in the existing repo, copy the workflow files from a checkout of this template.
+   `--ignore-existing` never overwrites a file the repo already has; `/setup-project` merges those
+   in step 3.
+
+   ```bash
+   cd fullstack-agent-template
+   rsync -a --ignore-existing --relative \
+     CLAUDE.md context plans/.gitkeep .claude/commands .mcp.json \
+     .github/agent-prompt.md .github/scripts .github/workflows \
+     ../my-app/
+   ```
+
+2. Check that `git status` in `my-app` shows only the new files.
+3. In Claude Code in `my-app`, run
+   `/setup-project <a few sentences about the project>. Template checkout: ../fullstack-agent-template`.
+   It reads the codebase first, then asks only what it cannot work out. It fills in `CLAUDE.md`
+   (including its "Commands and paths"), `context/` (describing the code as it is), the agent
+   prompt and the CI and agent workflows, and merges any file the copy skipped. It keeps the
+   project's own README, package names and conventions unless you choose otherwise.
+4. Do the one-time GitHub setup below, then start on the first ticket.
+
+### One-time GitHub setup
+
+#### 1. Set up claude auth token
 
 ```bash
-claude setup-token                       # then:
+claude setup-token
 gh secret set CLAUDE_CODE_OAUTH_TOKEN
-gh label create agent;            gh label create agent:execute-now
-gh label create agent:wip;        gh label create agent:pr-open
-gh label create agent:needs-info; gh label create agent:failed
 ```
 
-- Repo Settings → Actions → General → Workflow permissions: **Read and write**, and tick **Allow
-  GitHub Actions to create and approve pull requests**.
-- Repo Settings → Branches: protect `main` (require a PR and the `CI / check` status).
-- In Claude Code, approve the `mui-mcp` server from `.mcp.json` when prompted.
+#### 2. Create the issue labels
 
-## Changing the template
+```bash
+gh label create agent             --description "Agent picks this up in the nightly sweep"
+gh label create agent:execute-now --description "Agent starts on this right away"
+gh label create agent:wip         --description "Agent is working on this"
+gh label create agent:pr-open     --description "Agent opened a PR"
+gh label create agent:needs-info  --description "Agent asked questions; answer, then remove to retry"
+gh label create agent:failed      --description "Agent run failed; remove to retry"
+```
 
-Improvements found while using it in a project (a better command, a new standard) belong back
-here, so the next project starts with them. Keep everything in this repo project-neutral: domain
-rules go in a project's own `CLAUDE.md` and `context/`, never in the template.
+#### 3. Workflow permissions
+
+Repo Settings → Actions → General → Workflow permissions: **Read and write**, and tick **Allow
+GitHub Actions to create and approve pull requests**.

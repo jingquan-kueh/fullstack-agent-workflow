@@ -18,11 +18,11 @@ and untracked changes. Check, in this order:
 5. **The spec**: the plan (latest matching file in `plans/`) or the ticket named in the branch
    (`feat/t01-…` → T01 in `context/progress-tracker.md`), if any: anything missing, or built
    beyond it.
-6. **Standards**: `context/code-standards.md`, plus `context/ui-rules.md` for `frontend/`.
+6. **Standards**: `context/code-standards.md`, plus `context/ui-rules.md` for web app code.
 7. **Tests**: business logic covered, tests named after behaviour, database code tested against
    real Postgres where a fake would hide the bug.
 
-Run `npm run check` and include the result.
+Run the check command (`CLAUDE.md` → "Commands and paths") and include the result.
 
 Report findings ranked most severe first, each with `file:line`, what is wrong and a concrete
 failure case. Then ask which to fix. Do not change code until the developer answers.

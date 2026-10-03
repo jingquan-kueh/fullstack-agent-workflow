@@ -3,6 +3,10 @@
 # PRs opened by the issue agent use the workflow's GITHUB_TOKEN, which does not trigger
 # `pull_request` runs. agent.yml starts this workflow via `workflow_dispatch` on the agent's
 # branch instead, so its checks still appear on the PR's head commit.
+#
+# Written for the template's default stack (Node via .nvmrc, npm, Postgres). In a project that
+# adopted the workflow, the service, env, install and check steps follow that project; if it
+# already had a CI workflow, that one stays and only needs a `workflow_dispatch` trigger.
 
 name: CI
 

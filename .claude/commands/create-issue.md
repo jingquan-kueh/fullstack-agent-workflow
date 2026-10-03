@@ -37,8 +37,8 @@ schema or existing data, say so and spell out the migration.
 
 ## Definition of done
 - [ ] Checkable outcomes, one per line.
-- [ ] `npm run check` passes.
-- [ ] (frontend/ changes) Desktop + mobile screenshots of: <screens>.
+- [ ] The check command passes.
+- [ ] (web app changes) Desktop + mobile screenshots of: <screens>.
 
 ## Out of scope
 - Related work this issue must not do (often the next tickets).

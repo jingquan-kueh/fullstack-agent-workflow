@@ -6,7 +6,7 @@ in `architecture.md`; this file only tracks what is built.
 ## How to use
 
 - **One checkbox = one ticket = one GitHub issue = one branch = one PR.** A ticket is mergeable to
-  `main` on its own with `npm run check` passing, owns one concern (usually one boundary from
+  `main` on its own with the check command passing, owns one concern (usually one boundary from
   `architecture.md`), ships with its tests, migrations and `context/` updates, and is reviewable in
   one sitting.
 - Tick the box in the PR that completes the ticket, and add the PR number: `- [x] **T03 …** (#12)`.

@@ -1,5 +1,5 @@
 {
-  "name": "fullstack-agent-template",
+  "name": "fullstack-agent-workflow",
   "private": true,
   "type": "module",
   "workspaces": [

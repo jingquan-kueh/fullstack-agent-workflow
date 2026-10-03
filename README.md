@@ -49,7 +49,7 @@ What a new project starts with. An existing project keeps its own stack.
 1. Copy the template (or mark this repo as a GitHub template and use "Use this template"):
 
    ```bash
-   rsync -a --exclude node_modules --exclude .git fullstack-agent-template/ my-app/
+   rsync -a --exclude node_modules --exclude .git fullstack-agent-workflow/ my-app/
    cd my-app && git init -b main
    ```
 
@@ -81,7 +81,7 @@ workflow layer is copied; the skeleton and tooling are not.
    in step 3.
 
    ```bash
-   cd fullstack-agent-template
+   cd fullstack-agent-workflow
    rsync -a --ignore-existing --relative \
      CLAUDE.md context plans/.gitkeep .claude/commands .mcp.json \
      .github/agent-prompt.md .github/scripts .github/workflows \
@@ -90,7 +90,7 @@ workflow layer is copied; the skeleton and tooling are not.
 
 2. Check that `git status` in `my-app` shows only the new files.
 3. In Claude Code in `my-app`, run
-   `/setup-project <a few sentences about the project>. Template checkout: ../fullstack-agent-template`.
+   `/setup-project <a few sentences about the project>. Template checkout: ../fullstack-agent-workflow`.
    It reads the codebase first, then asks only what it cannot work out. It fills in `CLAUDE.md`
    (including its "Commands and paths"), `context/` (describing the code as it is), the agent
    prompt and the CI and agent workflows, and merges any file the copy skipped. It keeps the

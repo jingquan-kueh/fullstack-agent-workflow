@@ -1,0 +1,54 @@
+# CI: typecheck, lint, format check and tests. Gate for every PR into `main`.
+#
+# PRs opened by the issue agent use the workflow's GITHUB_TOKEN, which does not trigger
+# `pull_request` runs. agent.yml starts this workflow via `workflow_dispatch` on the agent's
+# branch instead, so its checks still appear on the PR's head commit.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Throwaway database for tests that need real Postgres. Same credentials as
+    # docker-compose.yml.
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+
+    env:
+      DATABASE_URL: postgres://app:app@localhost:5432/app
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run check

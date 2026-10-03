@@ -1,0 +1,163 @@
+# Plan: Fastify + Drizzle as template defaults
+
+> Status: **implemented** on `feat/fastify-drizzle-defaults` (2026-10-03). Every item under
+> "Files to change", "Tests" and "Verification" is done; deviations are listed at the end.
+
+## Goal
+
+Make Fastify (HTTP) and Drizzle (data access + migrations) the template's built-in stack, the same
+way React, MUI and Postgres already are, so new projects start with them wired, tested and
+documented instead of left _open_ for `/setup-project`.
+
+## Context read
+
+`CLAUDE.md`, `context/architecture.md`, `code-standards.md`, `library-docs.md`,
+`progress-tracker.md`, `README.md`, `.claude/commands/setup-project.md`, `.github/agent-prompt.md`,
+`.github/workflows/{ci,agent}.yml`, every file under `backend/`.
+
+Today: `backend/src/app.ts` is a hand-rolled `node:http` router, `backend/src/db.ts` wraps a raw
+`pg.Pool` behind the `Database` interface, there are no migrations, and the docs list the HTTP
+framework, data access and migrations as _open_.
+
+## Approach
+
+Decisions settled with the developer:
+
+- **Keep the `Database` interface.** Drizzle lives only inside its implementation, and business
+  logic still depends on the interface (so `health.ts` and the fake stay as they are).
+- **A small zod provider in the repo** (no `fastify-type-provider-zod`, which would pull in
+  `@fastify/swagger`).
+
+Versions: `fastify@5.12.5`, `drizzle-orm@0.45.3`, `drizzle-kit@0.31.11` (dev). Keep `pg` as the
+driver.
+
+**Migrations:** `drizzle-kit generate` only _creates_ SQL files from `schema.ts` (it needs no DB
+connection). An in-repo `migrate.ts` script _applies_ them with `drizzle-orm/node-postgres/migrator`,
+reading `DATABASE_URL` through `loadEnv()`, the same way `dev`/`start` run
+(`node --env-file-if-exists=../.env --import tsx`). `drizzle-kit push` is never used. Column
+casing is `snake_case` (set in both the drizzle client and the drizzle-kit config), so TS keys stay
+camelCase, as code-standards requires.
+
+**Fastify app:** `buildApp({ db, logger })` returns a `FastifyInstance` with:
+
+- the zod `validatorCompiler`. Invalid input gets `400 { error: "Invalid request: body.name: …" }`
+  naming fields, never values
+- a central error handler. Validation errors get 400. Anything else is logged by error name only
+  and gets `500 { error: "Internal server error" }`, never a driver message
+- a not-found handler: `404 { error: "Not found" }`, unchanged
+- `GET /api/health`, same behaviour as today (200 / 503)
+
+`main.ts` listens on `host: '::'` (the same as today's `node:http` default) with the pino logger
+on, and shuts down with `app.close()` and then `db.close()`.
+
+**Tests need Postgres:** a Vitest `globalSetup` loads `../.env` if present (CI sets `DATABASE_URL`
+itself) and applies migrations. That makes `npm test` / `npm run check` self-contained after
+`npm run db:up`. CI and the agent already have the service container, so neither workflow needs
+to change.
+
+## Files to change
+
+**Backend**
+
+- `backend/package.json`: add `fastify` and `drizzle-orm` (deps), `drizzle-kit` (dev). Add the
+  scripts `db:generate` (`drizzle-kit generate`) and `db:migrate` (`node --env-file-if-exists=../.env --import tsx src/db/migrate.ts`).
+- `backend/src/db.ts` → `backend/src/db/database.ts`: keep the same `Database` type. Rename
+  `createPgDatabase` to `createDatabase`: a pg Pool plus `drizzle({ client: pool, schema, casing: 'snake_case' })`.
+  `ping` runs ``db.execute(sql`select 1`)``. Keep the pool error handler and the 5 s connection
+  timeout.
+- `backend/src/db/schema.ts` (new): no tables yet. A short comment on the conventions (snake_case
+  via casing, `timestamptz`, primary key convention still TODO(setup)).
+- `backend/src/db/migrate.ts` (new): exports `runMigrations(connectionString)`, used by the CLI
+  entry and by the test globalSetup. Exits non-zero on failure and never logs the URL.
+- `backend/drizzle/meta/_journal.json` (new, empty journal) so the migrator works before the first
+  migration exists. Check in step 1 of implementation that drizzle-kit accepts it and that the
+  next `generate` appends to it.
+- `backend/drizzle.config.ts` (new): `dialect: 'postgresql'`, `schema: './src/db/schema.ts'`,
+  `out: './drizzle'`, `casing: 'snake_case'`. Its default export is required by drizzle-kit (add a
+  comment saying so).
+- `backend/src/http/zod.ts` (new): a `ZodTypeProvider` type plus a `validatorCompiler` (~30 lines).
+- `backend/src/app.ts`: rewrite as `buildApp`, with the handlers described above.
+- `backend/src/main.ts`: Fastify wiring and graceful shutdown.
+- `backend/src/testing/fake-database.ts`: update the import path only.
+- `backend/vitest.config.ts` (new) + `backend/src/testing/global-setup.ts` (new).
+- `backend/tsconfig.json`: include `drizzle.config.ts` and `vitest.config.ts`, so ESLint's
+  projectService covers them.
+
+**Root**
+
+- `package.json`: add `db:generate` / `db:migrate` scripts that call the backend ones.
+- `.prettierignore`: add `backend/drizzle/` (generated by drizzle-kit).
+
+**Docs** (same change, per CLAUDE.md)
+
+- `context/architecture.md`: stack rows for HTTP framework (Fastify 5), data access (Drizzle ORM
+  on `pg`, behind `Database`) and migrations (`npm run db:generate` / `npm run db:migrate`, SQL in
+  `backend/drizzle/`). Also update the folder tree, the boundaries (logic never imports
+  `pg`/`drizzle-orm`/`fastify`), the local-dev flow (`db:migrate` step) and the status line. Auth
+  and hosting stay _open_.
+- `context/code-standards.md`: the migration workflow (edit `schema.ts`, `db:generate`, review the
+  SQL, commit; never `push`; never edit a merged migration). Queries go through the Drizzle
+  builder or the `sql` template, never `sql.raw` with input. Routes declare zod `schema` and rely
+  on the central error handler.
+- `context/library-docs.md`: Fastify and Drizzle docs (Drizzle's `llms.txt`).
+- `README.md`: the stack sentence on line ~20, and `npm run db:migrate` in the quickstart.
+- `.claude/commands/setup-project.md`: Fastify and Drizzle are defaults (can be swapped), so drop
+  them from the "decide" list and examples.
+- `context/progress-tracker.md`: mention Fastify + Drizzle in T00, and fix the "adopt each stack
+  choice" example.
+
+## Database changes
+
+None. No tables, only the migration tooling and an empty journal.
+
+## Tests
+
+- `app.test.ts`: rewrite with `app.inject()`. Keep the 3 existing cases (health 200, health 503,
+  404 JSON). Add one: an unexpected error returns `500 { error: "Internal server error" }` with no
+  error message in the body.
+- `http/zod.test.ts` (new): a throwaway Fastify route with a body schema. A valid body passes
+  typed. An invalid body gets 400 naming the field and not echoing the value.
+- `db/database.test.ts` (new, real Postgres): `ping` resolves against `DATABASE_URL` after
+  migrations.
+- `health.test.ts`, `env.test.ts`: unchanged.
+
+## Verification
+
+1. `npm install`, `npm run db:up`, `npm run db:migrate` (succeeds on the empty journal).
+2. Add a temporary table to `schema.ts`, then `npm run db:generate`: check that a SQL file appears
+   and the journal updates. Revert both.
+3. `npm run check` passes.
+4. `npm run dev -w backend` + `npm run dev -w frontend`: the page shows API + database "up". Run
+   `curl localhost:3000/api/nope` (expect 404 JSON). Stop Postgres and check health returns 503.
+
+## Impact
+
+- Schema / existing data: none.
+- Security: error bodies never include driver messages. Logs use pino's default request
+  serializer (method, URL, no headers or bodies) and never the DB URL. No new env vars or secrets.
+- Guardrails: migrations-only schema changes now have a concrete tool. Not on `main`: the work
+  happens on `feat/fastify-drizzle-defaults`.
+- Behaviour change: `npm test` now needs Postgres running (`npm run db:up`).
+
+## Out of scope
+
+Auth, hosting, response serialization schemas, OpenAPI/swagger, a separate test database,
+`pino-pretty`, per-feature folder convention (stays TODO(setup)), frontend changes.
+
+## Open questions
+
+- The repo has **no commits yet**, so a feature branch needs a base. Suggestion: the developer
+  makes an initial "Template scaffold" commit on `main` first (a one-off exception), then this work
+  goes on a branch and PR.
+- After approval: save this plan to `plans/2026-10-03-fastify-drizzle-defaults.md` and stop, then
+  `/implement` it.
+
+## Deviations (from implementation)
+
+- `database.ts` also exports `createPool` / `createDrizzle`, so `migrate.ts` reuses the same
+  pool settings and casing instead of duplicating them.
+- `buildApp` has no explicit `FastifyInstance` return type: the annotation would drop the zod
+  type provider and leave `request.body` as `unknown`.
+- Fastify's own 4xx errors (malformed JSON, body too large) keep their status and message; only
+  5xx are replaced with `Internal server error`.
+- `.claude/commands/implement.md`: added `npm run db:migrate` to the "run the app" step.

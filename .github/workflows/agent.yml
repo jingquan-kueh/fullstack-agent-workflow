@@ -1,0 +1,253 @@
+# Issue agent: picks up one open issue labelled `agent`, implements it with
+# Claude Code, and opens a PR. Never touches `main`.
+#
+# Issue label state machine (managed by this workflow, not by the agent):
+#   agent              eligible; picked up by the nightly sweep
+#   agent:execute-now  run immediately (adds `agent` if missing, then is removed)
+#   agent:wip          claimed by a run
+#   agent:pr-open      PR created
+#   agent:needs-info   agent asked questions on the issue; remove to retry
+#   agent:failed       run errored; remove label to retry
+#
+# Screenshots taken by the agent are pushed to the orphan `screenshots` branch
+# (one folder per issue, never merged) and linked from the PR.
+#
+# The agent gets a throwaway Postgres service container and no production credentials.
+# If the app needs other dev-only secrets to render screens, add them to the "Run Claude Code"
+# step's env, never production ones.
+#
+# One-time setup (see .github/agent-prompt.md for what the agent does):
+#   claude setup-token  ->  gh secret set CLAUDE_CODE_OAUTH_TOKEN
+#   for l in agent agent:execute-now agent:wip agent:pr-open agent:needs-info agent:failed; do
+#     gh label create "$l"; done
+#   Repo Settings -> Actions -> Workflow permissions: Read and write,
+#     + "Allow GitHub Actions to create and approve pull requests"
+
+name: Issue agent
+
+on:
+  schedule:
+    - cron: '17 16 * * *' # TODO(setup): 16:17 UTC; pick a quiet hour in your time zone, off the hour (GitHub delays on-the-hour schedules most)
+  issues:
+    types: [labeled] # fire immediately on the `agent:execute-now` label
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Issue number (blank = oldest eligible)'
+        required: false
+
+# Never run two agents at once; a second trigger waits for the first.
+concurrency:
+  group: issue-agent
+  cancel-in-progress: false
+
+permissions:
+  actions: write # start ci.yml on the agent's branch
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  run:
+    if: github.event_name != 'issues' || github.event.label.name == 'agent:execute-now'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    # Throwaway database for tests and screenshots. Same credentials as docker-compose.yml.
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Pick one eligible issue and claim it
+        id: pick
+        env:
+          REQUESTED: ${{ inputs.issue || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          # State labels mean a run already touched this issue; such issues are skipped
+          # until the label is removed. `agent` and `agent:execute-now` are not state labels.
+          STATE='["agent:wip","agent:pr-open","agent:needs-info","agent:failed"]'
+          ELIGIBLE="select(.state == \"OPEN\" and (([.labels[].name] | map(select(. as \$l | $STATE | index(\$l))) | length) == 0))"
+
+          if [ -n "$REQUESTED" ]; then
+            # Explicit issue (execute-now label or manual dispatch): no `agent` label required.
+            N=$(gh issue view "$REQUESTED" --json number,state,labels --jq "$ELIGIBLE | .number")
+            if [ -z "$N" ]; then
+              echo "Issue #$REQUESTED is not eligible (closed, or already has a state label)."
+              gh issue edit "$REQUESTED" --remove-label agent:execute-now 2>/dev/null || true
+              exit 0
+            fi
+          else
+            # Scheduled sweep: oldest open issue labelled `agent` with no state label.
+            N=$(gh issue list --label agent --state open --json number,state,labels \
+                  --jq "[.[] | $ELIGIBLE] | sort_by(.number) | .[0].number // empty")
+            if [ -z "$N" ]; then
+              echo "No eligible issues. Nothing to do."
+              exit 0
+            fi
+          fi
+
+          gh issue edit "$N" --add-label agent,agent:wip --remove-label agent:execute-now 2>/dev/null \
+            || gh issue edit "$N" --add-label agent,agent:wip
+          gh issue comment "$N" --body "🤖 Picked up by [run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          echo "number=$N" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node
+        if: steps.pick.outputs.number
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies and Chromium (for screenshots)
+        if: steps.pick.outputs.number
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run Claude Code
+        id: claude
+        if: steps.pick.outputs.number
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            You are working on GitHub issue #${{ steps.pick.outputs.number }} in this repository.
+            The issue number is also in the environment variable ISSUE.
+            Read .github/agent-prompt.md and follow it exactly.
+          claude_args: |
+            --model claude-opus-5-5
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+            --max-turns 150
+        env:
+          ISSUE: ${{ steps.pick.outputs.number }}
+          # The service container above; the only database this job can reach.
+          DATABASE_URL: postgres://app:app@localhost:5432/app
+
+      - name: Publish screenshots to the `screenshots` branch
+        id: shots
+        if: always() && steps.pick.outputs.number
+        env:
+          ISSUE: ${{ steps.pick.outputs.number }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          COUNT=0
+          if [ -d screenshots ]; then
+            COUNT=$(find screenshots -maxdepth 1 -name '*.png' | wc -l | tr -d ' ')
+          fi
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No screenshots taken (no frontend/ changes, or the issue said not to)."
+            exit 0
+          fi
+
+          # One long-lived orphan branch, one folder per issue. Never merged.
+          W=/tmp/shots-branch
+          if git ls-remote --exit-code --heads origin screenshots >/dev/null; then
+            git fetch -q origin screenshots
+            git worktree add -q "$W" -B screenshots origin/screenshots
+          else
+            git worktree add -q --detach "$W"
+            git -C "$W" checkout -q --orphan screenshots
+            git -C "$W" rm -rfq . && git -C "$W" clean -fdxq
+          fi
+
+          rm -rf "$W/issue-$ISSUE"; mkdir -p "$W/issue-$ISSUE"
+          cp screenshots/*.png "$W/issue-$ISSUE/"
+          git -C "$W" add -A
+          git -C "$W" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Screenshots for #$ISSUE (run ${{ github.run_id }})"
+          git -C "$W" push -q origin screenshots
+
+          # Build the PR comment: one line per screen with desktop/mobile links.
+          BLOB="$REPO_URL/blob/screenshots/issue-$ISSUE"
+          {
+            echo "📸 **Screenshots** ($COUNT files) — [browse folder]($REPO_URL/tree/screenshots/issue-$ISSUE)"
+            echo
+            for d in "$W/issue-$ISSUE"/*-desktop.png; do
+              [ -e "$d" ] || continue
+              base=$(basename "$d" -desktop.png)
+              line="- \`$base\`: [desktop]($BLOB/$base-desktop.png)"
+              [ -e "$W/issue-$ISSUE/$base-mobile.png" ] && line="$line · [mobile]($BLOB/$base-mobile.png)"
+              echo "$line"
+            done
+            for f in "$W/issue-$ISSUE"/*.png; do
+              n=$(basename "$f")
+              case "$n" in *-desktop.png|*-mobile.png) continue;; esac
+              echo "- [$n]($BLOB/$n)"
+            done
+          } > shots-comment.md
+          cat shots-comment.md
+
+      - name: Report usage
+        if: always() && steps.claude.outputs.execution_file
+        env:
+          ISSUE: ${{ steps.pick.outputs.number }}
+          FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          # -s + flatten handles both a JSON array and newline-delimited JSON.
+          jq -rs '
+            flatten | map(select(.type == "result")) | last
+            | if . == null then "_No result message found (run may have been cut short)._" else
+              "|  |  |  |  |\n|--|--|--|--|\n" +
+              "| Model | \(.modelUsage // {} | keys | join(", ") | if . == "" then "unknown" else . end) |  |  |\n" +
+              "| Turns | \(.num_turns) | Duration | \((.duration_ms // 0) / 60000 * 10 | round / 10) min |\n" +
+              "| Input tokens | \(.usage.input_tokens // 0) | Output tokens | \(.usage.output_tokens // 0) |\n" +
+              "| Cache read | \(.usage.cache_read_input_tokens // 0) | Cache write | \(.usage.cache_creation_input_tokens // 0) |\n" +
+              "| Cost at API rates | $\((.total_cost_usd // 0) * 100 | round / 100) | Status | \(.subtype) |"
+              end
+          ' "$FILE" > usage.md
+          { echo "### 🤖 Claude usage for #$ISSUE"; echo; cat usage.md; } >> "$GITHUB_STEP_SUMMARY"
+          # Posted on the PR by the next step, if the run opened one.
+          { echo "🤖 Usage for this run (cost shown at API list rates; billed to subscription quota):"; echo; cat usage.md; } > usage-comment.md
+
+      - name: Record outcome on the issue, comment on the PR and start CI
+        if: always() && steps.pick.outputs.number
+        env:
+          ISSUE: ${{ steps.pick.outputs.number }}
+          SHOTS: ${{ steps.shots.outputs.count }}
+        run: |
+          set -euo pipefail
+          gh issue edit "$ISSUE" --remove-label agent:wip
+
+          # The agent may have relabelled the issue itself when it needed clarification.
+          if gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx 'agent:needs-info'; then
+            echo "Agent asked for more info."; exit 0
+          fi
+
+          PR_JSON=$(gh pr list --state open --json number,headRefName \
+                      --jq "[.[] | select(.headRefName | startswith(\"agent/issue-$ISSUE-\"))] | .[0] // empty")
+          if [ -n "$PR_JSON" ]; then
+            PR=$(jq -r .number <<< "$PR_JSON")
+            BRANCH=$(jq -r .headRefName <<< "$PR_JSON")
+            gh issue edit "$ISSUE" --add-label agent:pr-open
+            # PRs opened with GITHUB_TOKEN don't trigger `pull_request` workflows; dispatch CI instead.
+            gh workflow run ci.yml --ref "$BRANCH"
+            if [ "${SHOTS:-0}" -gt 0 ] && [ -s shots-comment.md ]; then
+              gh pr comment "$PR" --body-file shots-comment.md
+            fi
+            if [ -s usage-comment.md ]; then
+              gh pr comment "$PR" --body-file usage-comment.md
+            fi
+          else
+            gh issue edit "$ISSUE" --add-label agent:failed
+            gh issue comment "$ISSUE" --body "🤖 Run finished without opening a PR. See the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}). Remove the \`agent:failed\` label to retry."
+          fi

@@ -21,7 +21,7 @@ export const useHealth = (): HealthState => {
         if (isCurrent) {
           setState({ status: 'error' });
         }
-      },
+      }
     );
     return () => {
       isCurrent = false;

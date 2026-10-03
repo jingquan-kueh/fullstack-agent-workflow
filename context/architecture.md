@@ -65,7 +65,7 @@ pending migrations to `DATABASE_URL`. Tests apply them automatically before runn
 ├── .nvmrc                        → Node 24
 ├── tsconfig.base.json            → Shared strict compiler options
 ├── eslint.config.js              → Lint rules for backend + frontend
-├── .prettierrc.json              → Formatting (single quotes, 100 cols)
+├── .prettierrc.json              → Formatting
 ├── package.json                  → Root; declares workspaces + shared scripts
 ├── backend/
 │   ├── package.json

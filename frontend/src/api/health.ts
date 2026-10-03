@@ -17,7 +17,7 @@ export const toHealth = (body: unknown): Health => {
   if (!result.success) {
     // zod messages name the failed fields and expected types, never the values.
     throw new Error(
-      `GET /api/health returned an unexpected body: ${z.prettifyError(result.error)}`,
+      `GET /api/health returned an unexpected body: ${z.prettifyError(result.error)}`
     );
   }
   return result.data;

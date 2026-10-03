@@ -8,7 +8,7 @@ const buildAppWithEchoRoute = () => {
   app.post(
     '/api/echo',
     { schema: { body: z.object({ name: z.string().min(1), age: z.number().int() }) } },
-    (request) => ({ greeting: `Hello ${request.body.name}`, nextAge: request.body.age + 1 }),
+    (request) => ({ greeting: `Hello ${request.body.name}`, nextAge: request.body.age + 1 })
   );
   return app;
 };

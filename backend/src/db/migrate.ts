@@ -23,6 +23,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       // The message names the failing statement; the connection string never appears in it.
       console.error('Migration failed:', error instanceof Error ? error.message : error);
       process.exit(1);
-    },
+    }
   );
 }

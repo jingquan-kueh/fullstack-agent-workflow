@@ -23,7 +23,7 @@ describe('fetchHealth', () => {
 
   it('fails on a body of the wrong shape', async () => {
     await expect(fetchHealth(respondWith(200, { status: 'great' }))).rejects.toThrow(
-      'unexpected body',
+      'unexpected body'
     );
   });
 });

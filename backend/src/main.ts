@@ -16,7 +16,7 @@ const shutdown = () => {
     .then(() => db.close())
     .then(
       () => process.exit(0),
-      () => process.exit(1),
+      () => process.exit(1)
     );
 };
 process.on('SIGINT', shutdown);

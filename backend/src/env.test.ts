@@ -17,7 +17,7 @@ describe('loadEnv', () => {
 
   it('refuses a database URL that is not Postgres', () => {
     expect(() => loadEnv({ ...validEnv, DATABASE_URL: 'mysql://app:app@localhost/app' })).toThrow(
-      'DATABASE_URL',
+      'DATABASE_URL'
     );
   });
 

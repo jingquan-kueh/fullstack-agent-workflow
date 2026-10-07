@@ -11,7 +11,8 @@ Use it to start a new project from a runnable skeleton (Node.js + Postgres + Rea
 
 ## Development Workflow Overview
 
-[I Will attach my own screenshot here later]
+<img width="978" height="768" alt="image" src="https://github.com/user-attachments/assets/4013cf51-8431-4707-b373-b3dff4df7cc2" />
+
 
 ## Commands
 
